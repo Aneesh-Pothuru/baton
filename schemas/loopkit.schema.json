@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aneesh-pothuru.github.io/baton/schemas/loopkit.schema.json",
+  "title": "Vendored loopkit run envelope",
+  "type": "object",
+  "required": ["schema_version", "run", "trace", "scores", "verdict"],
+  "properties": {
+    "schema_version": {"const": "loopkit.v0.1"},
+    "run": {
+      "type": "object",
+      "required": ["id", "system", "status"],
+      "properties": {
+        "id": {"type": "string"},
+        "system": {"type": "string"},
+        "status": {"enum": ["PENDING", "RUNNING", "PAUSED", "COMPLETED", "FAILED"]}
+      },
+      "additionalProperties": true
+    },
+    "trace": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sequence", "kind", "payload"],
+        "properties": {
+          "sequence": {"type": "integer", "minimum": 0},
+          "kind": {"type": "string"},
+          "payload": {"type": "object"}
+        }
+      }
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": {"type": ["number", "integer"]}
+    },
+    "verdict": {
+      "enum": ["PASS", "FAIL", "PROMOTE", "ARCHIVE", "UNDETERMINED", "UNATTRIBUTED"]
+    }
+  }
+}
+

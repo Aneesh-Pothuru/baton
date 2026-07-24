@@ -1,0 +1,20 @@
+name: BATON routines
+
+on:
+  schedule:
+    - cron: "0 7 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  fire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fire deterministic example routine
+        env:
+          PYTHONPATH: src
+        run: python -m baton fire docs-morning --database reports/routine.sqlite
+

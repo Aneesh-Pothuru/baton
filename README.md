@@ -33,6 +33,8 @@ Generated evidence is in `reports/baton.sqlite` and
 `reports/compounding.json`. GitHub Pages serves [docs/index.html](docs/index.html),
 which redirects to the timeline.
 
+![BATON three-agent fleet timeline](docs/assets/demo.jpg)
+
 ## Commands
 
 ```bash
@@ -52,4 +54,3 @@ The vendored [loopkit schema](schemas/loopkit.schema.json) defines portable
 run/trace/verdict records. The complete brief is in
 [docs/BRIEF.md](docs/BRIEF.md). Measured and unmeasured boundaries are explicit
 in [LIMITS.md](LIMITS.md).
-

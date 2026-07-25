@@ -1056,7 +1056,7 @@ class Runtime:
 
 
 def render_timeline(runtime: Runtime, output: str | Path) -> Path:
-    """Render all durable organization events into one static HTML timeline."""
+    """Render the durable office record as an inspectable conductor's score."""
 
     events = runtime.rows("events")
     runs = runtime.rows("runs")
@@ -1065,147 +1065,1229 @@ def render_timeline(runtime: Runtime, output: str | Path) -> Path:
     undetermined = sum(row["status"] == "UNDETERMINED" for row in lessons)
     claims = sum(row["kind"] == "CLAIM_GRANTED" for row in events)
     advisories = sum(row["kind"] == "ADVISORY_PUBLISHED" for row in events)
-    event_rows = "\n".join(
+
+    def family(kind: str) -> str:
+        if "ADVISORY" in kind or "OBJECTIVE" in kind:
+            return "direction"
+        if "CLAIM" in kind:
+            return "coordination"
+        if "LESSON" in kind or "EPISODE" in kind:
+            return "memory"
+        if "RUN_" in kind or "ROUTINE_" in kind:
+            return "run"
+        if "CHECKPOINT" in kind or "TOOL_" in kind:
+            return "execution"
+        return "system"
+
+    actor_names = ["control-plane"]
+    for event in events:
+        actor = str(event["actor"] or "control-plane")
+        if actor not in actor_names:
+            actor_names.append(actor)
+
+    event_count = max(len(events), 1)
+    event_nodes: dict[str, list[str]] = {actor: [] for actor in actor_names}
+    for row in events:
+        sequence = int(row["sequence"])
+        logical_time = str(row["logical_time"])
+        actor = str(row["actor"] or "control-plane")
+        kind = str(row["kind"])
+        run_id = str(row["run_id"] or "fleet")
+        payload = str(row["payload"])
+        marker = (
+            f"<button class='score-note {family(kind)}' "
+            f"style='grid-column:{sequence}' data-kind='{html.escape(kind)}' "
+            f"data-sequence='{sequence}' "
+            f"data-time='{html.escape(logical_time, quote=True)}' "
+            f"data-actor='{html.escape(actor, quote=True)}' "
+            f"data-run='{html.escape(run_id, quote=True)}' "
+            f"data-payload='{html.escape(payload, quote=True)}' "
+            f"aria-label='Event {sequence}: {html.escape(kind)} by "
+            f"{html.escape(actor)} at {html.escape(logical_time)}'>"
+            f"<span>{sequence}</span><b class='sr-only'>{html.escape(kind)}</b>"
+            "</button>"
+        )
+        event_nodes[actor].append(marker)
+
+    score_lanes = "\n".join(
+        "<div class='score-row'>"
+        f"<div class='lane-label'><strong>{html.escape(actor)}</strong>"
+        f"<span>{len(event_nodes[actor])} cues</span></div>"
+        f"<div class='staff' style='--beats:{event_count}' "
+        f"aria-label='{html.escape(actor)} event lane'>"
+        f"{''.join(event_nodes[actor])}</div></div>"
+        for actor in actor_names
+    )
+    time_cells = "\n".join(
+        f"<span>{html.escape(str(row['logical_time'])[11:16])}</span>"
+        for row in events
+    )
+    performer_rows = "\n".join(
+        "<li>"
+        f"<span class='part'>{index:02d}</span><div><strong>"
+        f"{html.escape(str(row['agent']))}</strong>"
+        f"<small>{html.escape(str(row['id']))}</small></div>"
+        f"<span class='performer-status'>{html.escape(str(row['status']))}</span>"
+        f"<div class='budget' title='{int(row['used_tokens'])} of "
+        f"{int(row['max_tokens'])} tokens used'><i style='width:"
+        f"{min(100, (int(row['used_tokens']) / int(row['max_tokens'])) * 100):.0f}%'>"
+        "</i></div></li>"
+        for index, row in enumerate(runs, 1)
+    )
+    transcript_rows = "\n".join(
         f"<tr data-kind='{html.escape(str(row['kind']))}'>"
         f"<td>{row['sequence']}</td>"
         f"<td>{html.escape(str(row['logical_time']))}</td>"
         f"<td>{html.escape(str(row['actor'] or 'control-plane'))}</td>"
-        f"<td><span class='kind'>{html.escape(str(row['kind']))}</span></td>"
+        f"<td>{html.escape(str(row['kind']))}</td>"
         f"<td>{html.escape(str(row['run_id'] or 'fleet'))}</td>"
-        "</tr>"
+        f"<td><code>{html.escape(str(row['payload']))}</code></td></tr>"
         for row in events
     )
-    run_cards = "\n".join(
-        "<article class='agent-card'>"
-        f"<div class='avatar'>{html.escape(str(row['agent'])[:2].upper())}</div>"
-        "<div class='agent-copy'>"
-        f"<p>{html.escape(str(row['agent']))}</p>"
-        f"<strong><i></i>{html.escape(str(row['status']))}</strong>"
-        f"<small>{html.escape(str(row['id']))}</small></div>"
-        "</article>"
-        for row in runs
+    seed_events_json = json.dumps(
+        [
+            {
+                "sequence": int(row["sequence"]),
+                "time": str(row["logical_time"]),
+                "actor": str(row["actor"] or "control-plane"),
+                "kind": str(row["kind"]),
+                "run": str(row["run_id"] or "fleet"),
+                "payload": json.loads(str(row["payload"])),
+                "family": family(str(row["kind"])),
+            }
+            for row in events
+        ],
+        separators=(",", ":"),
+    ).replace("</", "<\\/")
+    seed_runs_json = json.dumps(
+        [
+            {
+                "id": str(row["id"]),
+                "agent": str(row["agent"]),
+                "status": str(row["status"]),
+                "usedTokens": int(row["used_tokens"]),
+                "maxTokens": int(row["max_tokens"]),
+            }
+            for row in runs
+        ],
+        separators=(",", ":"),
+    ).replace("</", "<\\/")
+    stylesheet = """
+:root {
+  --paper:#f2f0e8;
+  --sheet:#fffef8;
+  --ink:#171714;
+  --muted:#67665f;
+  --hair:#c9c5b7;
+  --blue:#2343e8;
+  --red:#ed5b3d;
+  --acid:#c8ff32;
+  --mint:#5ed5ab;
+  --shadow:0 22px 60px rgba(34,31,22,.12);
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  margin:0;
+  color:var(--ink);
+  background:
+    linear-gradient(rgba(23,23,20,.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(23,23,20,.035) 1px,transparent 1px),
+    var(--paper);
+  background-size:28px 28px;
+  font:15px/1.5 Arial,Helvetica,sans-serif;
+}
+button,select { font:inherit; }
+button:focus-visible,select:focus-visible,summary:focus-visible {
+  outline:3px solid var(--blue);
+  outline-offset:3px;
+}
+.skip-link {
+  position:absolute;
+  left:14px;
+  top:-70px;
+  z-index:100;
+  padding:10px 14px;
+  color:var(--ink);
+  background:var(--acid);
+  font:800 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-decoration:none;
+  text-transform:uppercase;
+}
+.skip-link:focus { top:12px; }
+.sr-only {
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+.masthead {
+  min-height:54px;
+  padding:0 3.2vw;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+  color:#fff;
+  background:var(--ink);
+  border-bottom:5px solid var(--acid);
+}
+.wordmark {
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  font-weight:900;
+  letter-spacing:-.04em;
+}
+.wordmark span {
+  color:var(--acid);
+  font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+}
+.mast-meta {
+  display:flex;
+  gap:24px;
+  color:#c9c9c2;
+  font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.mast-meta strong { color:var(--acid); }
+.score-nav {
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+.score-nav a {
+  color:#c9c9c2;
+  text-decoration:none;
+  font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.score-nav a:hover { color:var(--acid); }
+main { overflow:hidden; }
+.opening {
+  max-width:1500px;
+  margin:auto;
+  padding:62px 3.2vw 42px;
+  display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(330px,.55fr);
+  gap:6vw;
+  align-items:end;
+}
+.kicker,.edition {
+  margin:0 0 14px;
+  font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.kicker { color:var(--blue); }
+h1 {
+  max-width:900px;
+  margin:0;
+  font:400 clamp(54px,8.4vw,130px)/.78 Georgia,"Times New Roman",serif;
+  letter-spacing:-.075em;
+}
+h1 em {
+  position:relative;
+  z-index:0;
+  font-style:italic;
+}
+h1 em:after {
+  content:"";
+  position:absolute;
+  z-index:-1;
+  left:-.04em;
+  right:-.08em;
+  bottom:.06em;
+  height:.24em;
+  background:var(--acid);
+  transform:rotate(-1.2deg);
+}
+.opening-note {
+  padding:24px 0 4px 25px;
+  border-left:2px solid var(--ink);
+}
+.opening-note p {
+  max-width:420px;
+  margin:0 0 24px;
+  font:18px/1.45 Georgia,"Times New Roman",serif;
+}
+.principles {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  border-top:1px solid var(--ink);
+  border-bottom:1px solid var(--ink);
+}
+.principles span {
+  padding:9px 0;
+  font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.principles span:nth-child(even) { text-align:right; }
+.measure-strip {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  border-top:2px solid var(--ink);
+  border-bottom:2px solid var(--ink);
+  background:var(--sheet);
+}
+.measure {
+  min-height:118px;
+  padding:22px 3.2vw;
+  border-right:1px solid var(--ink);
+}
+.measure:last-child { border-right:0; }
+.measure strong {
+  display:block;
+  font:400 43px/1 Georgia,"Times New Roman",serif;
+}
+.measure span {
+  display:block;
+  margin-top:12px;
+  font:700 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.score-section {
+  max-width:1500px;
+  margin:48px auto 0;
+  padding:0 3.2vw;
+}
+.score-head {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:32px;
+  align-items:end;
+  margin-bottom:22px;
+}
+.section-number {
+  display:block;
+  margin-bottom:5px;
+  color:var(--red);
+  font:800 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+h2 {
+  margin:0;
+  font:400 clamp(34px,4vw,60px)/.9 Georgia,"Times New Roman",serif;
+  letter-spacing:-.045em;
+}
+.score-head p {
+  max-width:650px;
+  margin:12px 0 0;
+  color:var(--muted);
+}
+.filterbar {
+  display:flex;
+  justify-content:flex-end;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.filter {
+  min-height:38px;
+  padding:0 13px;
+  border:1px solid var(--ink);
+  border-radius:0;
+  color:var(--ink);
+  background:transparent;
+  cursor:pointer;
+  font:800 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.filter:hover { background:#fff; }
+.filter.active {
+  color:#fff;
+  background:var(--ink);
+  box-shadow:5px 5px 0 var(--acid);
+}
+.transport {
+  margin-bottom:14px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  border:2px solid var(--ink);
+  background:var(--sheet);
+}
+.transport-main {
+  padding:14px;
+  display:flex;
+  align-items:end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.scenario-field {
+  min-width:260px;
+  margin-right:10px;
+}
+.scenario-field label {
+  display:block;
+  margin-bottom:6px;
+  font:800 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.scenario-field select {
+  width:100%;
+  min-height:42px;
+  padding:0 38px 0 12px;
+  border:1px solid var(--ink);
+  border-radius:0;
+  color:var(--ink);
+  background:var(--sheet);
+  font-weight:700;
+}
+.transport-button {
+  min-height:42px;
+  padding:0 14px;
+  border:1px solid var(--ink);
+  border-radius:0;
+  color:var(--ink);
+  background:transparent;
+  cursor:pointer;
+  font:800 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.transport-button:hover { background:var(--acid); }
+.transport-button.primary {
+  color:#fff;
+  background:var(--blue);
+  border-color:var(--blue);
+}
+.transport-button.recovery {
+  color:#fff;
+  background:var(--red);
+  border-color:var(--red);
+}
+.transport-status {
+  min-width:240px;
+  padding:13px 16px;
+  color:#fff;
+  background:var(--ink);
+}
+.transport-status span,.runtime-cell span {
+  display:block;
+  color:#99998f;
+  font:700 8px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.transport-status strong {
+  display:block;
+  margin-top:7px;
+  color:var(--acid);
+  font:800 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.progress {
+  height:4px;
+  margin-top:10px;
+  background:#44443e;
+}
+.progress i {
+  width:0;
+  height:100%;
+  display:block;
+  background:var(--acid);
+  transition:width 160ms linear;
+}
+.runtime-readout {
+  margin-bottom:14px;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  border:1px solid var(--ink);
+  border-bottom:0;
+}
+.runtime-cell {
+  min-width:0;
+  min-height:68px;
+  padding:13px;
+  border-right:1px solid var(--ink);
+  border-bottom:1px solid var(--ink);
+  background:rgba(255,254,248,.72);
+}
+.runtime-cell:last-child { border-right:0; }
+.runtime-cell strong {
+  display:block;
+  margin-top:8px;
+  overflow:hidden;
+  color:var(--ink);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.projection-note {
+  grid-column:1/-1;
+  margin:0;
+  padding:9px 13px;
+  border-bottom:1px solid var(--ink);
+  color:var(--muted);
+  background:#e4e1d5;
+  font:600 9px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.score-shell {
+  border:2px solid var(--ink);
+  background:var(--sheet);
+  box-shadow:var(--shadow);
+}
+.score-scroll {
+  overflow-x:auto;
+  scrollbar-color:var(--blue) var(--paper);
+}
+.time-row,.score-row {
+  min-width:2130px;
+  display:grid;
+  grid-template-columns:180px minmax(1950px,1fr);
+}
+.time-row {
+  min-height:36px;
+  color:#fff;
+  background:var(--ink);
+}
+.lane-label,.time-label {
+  position:sticky;
+  left:0;
+  z-index:3;
+  padding:12px 16px;
+  border-right:1px solid var(--ink);
+  background:var(--sheet);
+}
+.time-label {
+  color:var(--acid);
+  background:var(--ink);
+  font:800 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.time-track {
+  display:grid;
+  grid-template-columns:repeat(var(--beats),minmax(42px,1fr));
+  align-items:center;
+}
+.time-track span {
+  overflow:hidden;
+  color:#aaa99f;
+  font:600 8px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  transform:translateX(-11px) rotate(-45deg);
+}
+.score-row { min-height:78px; }
+.score-row + .score-row { border-top:1px solid var(--hair); }
+.lane-label {
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.lane-label strong {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font:800 12px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.lane-label span {
+  margin-top:6px;
+  color:var(--muted);
+  font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.staff {
+  --beats:42;
+  display:grid;
+  grid-template-columns:repeat(var(--beats),minmax(42px,1fr));
+  align-items:center;
+  padding:7px 0;
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc((100% / var(--beats)) - 1px),
+      rgba(23,23,20,.08) calc((100% / var(--beats)) - 1px),
+      rgba(23,23,20,.08) calc(100% / var(--beats))
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 10px,
+      rgba(23,23,20,.28) 10px,
+      rgba(23,23,20,.28) 11px
+    );
+}
+.score-note {
+  position:relative;
+  z-index:1;
+  grid-row:1;
+  justify-self:center;
+  width:24px;
+  height:24px;
+  padding:0;
+  border:2px solid var(--ink);
+  border-radius:50%;
+  color:#fff;
+  background:var(--ink);
+  cursor:pointer;
+  transition:transform 150ms ease,box-shadow 150ms ease,opacity 150ms ease;
+}
+.score-note:before {
+  content:"";
+  position:absolute;
+  left:17px;
+  bottom:17px;
+  width:2px;
+  height:25px;
+  background:currentColor;
+}
+.score-note span {
+  position:relative;
+  z-index:1;
+  font:800 8px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.score-note:hover,.score-note[aria-pressed="true"] {
+  z-index:2;
+  transform:scale(1.42);
+  box-shadow:0 0 0 4px var(--sheet),0 0 0 6px var(--ink);
+}
+.score-note.direction {
+  color:#fff;
+  border-color:var(--red);
+  background:var(--red);
+  border-radius:2px 50% 50%;
+}
+.score-note.coordination {
+  color:#fff;
+  border-color:var(--blue);
+  background:var(--blue);
+  border-radius:2px;
+}
+.score-note.memory {
+  color:var(--ink);
+  border-color:var(--ink);
+  background:var(--acid);
+  border-radius:50% 4px 50% 4px;
+}
+.score-note.execution {
+  color:var(--ink);
+  background:var(--sheet);
+}
+.score-note.system {
+  color:var(--ink);
+  border-color:var(--mint);
+  background:var(--mint);
+}
+.score-note[hidden] { display:none; }
+.legend {
+  min-height:48px;
+  padding:11px 16px;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:18px;
+  border-top:1px solid var(--ink);
+  background:#eeece3;
+}
+.legend span {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.legend i {
+  width:10px;
+  height:10px;
+  display:block;
+  border:1px solid var(--ink);
+  border-radius:50%;
+  background:var(--ink);
+}
+.legend .key-claim { border-radius:1px; background:var(--blue); }
+.legend .key-direction { border-radius:1px 50% 50%; background:var(--red); }
+.legend .key-memory { border-radius:50% 1px; background:var(--acid); }
+.legend .key-execution { background:var(--sheet); }
+.below-score {
+  max-width:1500px;
+  margin:0 auto;
+  padding:34px 3.2vw 66px;
+  display:grid;
+  grid-template-columns:minmax(310px,.75fr) minmax(0,1.25fr);
+  gap:28px;
+}
+.ensemble,.stage-note {
+  border-top:5px solid var(--ink);
+  padding-top:14px;
+}
+.mini-title {
+  margin:0 0 16px;
+  font:800 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.performers {
+  margin:0;
+  padding:0;
+  list-style:none;
+  border-bottom:1px solid var(--ink);
+}
+.performers li {
+  display:grid;
+  grid-template-columns:30px minmax(0,1fr) auto;
+  gap:13px;
+  align-items:center;
+  padding:14px 0;
+  border-top:1px solid var(--ink);
+}
+.part {
+  color:var(--blue);
+  font:900 18px/1 Georgia,"Times New Roman",serif;
+  font-style:italic;
+}
+.performers strong,.performers small { display:block; }
+.performers strong { font-size:13px; }
+.performers small {
+  overflow:hidden;
+  margin-top:2px;
+  color:var(--muted);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font:600 9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.performer-status {
+  color:#29785f;
+  font:800 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.performer-status[data-state="WAITING"] { color:var(--muted); }
+.performer-status[data-state="RUNNING"] { color:var(--blue); }
+.performer-status[data-state="RECOVERING"] { color:var(--red); }
+.budget {
+  grid-column:2/4;
+  height:3px;
+  background:var(--hair);
+}
+.budget i {
+  height:100%;
+  display:block;
+  background:var(--blue);
+}
+.stage-note {
+  min-height:260px;
+  padding:22px;
+  color:#fff;
+  background:var(--ink);
+  border-top-color:var(--red);
+}
+.stage-note .mini-title { color:var(--acid); }
+.event-heading {
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:20px;
+  align-items:start;
+}
+.event-number {
+  min-width:74px;
+  color:var(--acid);
+  font:italic 400 72px/.8 Georgia,"Times New Roman",serif;
+}
+.event-heading h3 {
+  margin:0;
+  overflow-wrap:anywhere;
+  font:400 clamp(26px,3vw,44px)/.95 Georgia,"Times New Roman",serif;
+}
+.event-heading p {
+  margin:9px 0 0;
+  color:#adada5;
+  font:600 10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.event-grid {
+  margin-top:26px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1px;
+  background:#474740;
+  border:1px solid #474740;
+}
+.event-grid div {
+  min-width:0;
+  padding:11px 13px;
+  background:var(--ink);
+}
+.event-grid span {
+  display:block;
+  color:#92928a;
+  font:700 8px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+.event-grid code {
+  display:block;
+  margin-top:5px;
+  overflow-wrap:anywhere;
+  color:#fff;
+  font:600 10px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.payload {
+  grid-column:1/-1;
+  max-height:112px;
+  overflow:auto;
+}
+.transcript {
+  max-width:1500px;
+  margin:0 auto 58px;
+  padding:0 3.2vw;
+}
+.transcript details {
+  border-top:1px solid var(--ink);
+  border-bottom:1px solid var(--ink);
+}
+.transcript summary {
+  padding:17px 0;
+  cursor:pointer;
+  font:800 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.table-scroll { overflow:auto; }
+table {
+  width:100%;
+  border-collapse:collapse;
+  background:var(--sheet);
+  font-size:11px;
+}
+th,td {
+  padding:10px;
+  border:1px solid var(--hair);
+  text-align:left;
+  vertical-align:top;
+  white-space:nowrap;
+}
+th {
+  color:#fff;
+  background:var(--ink);
+  font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  text-transform:uppercase;
+}
+td code {
+  display:block;
+  max-width:520px;
+  overflow:hidden;
+  color:var(--blue);
+  text-overflow:ellipsis;
+}
+tr[hidden] { display:none; }
+.footer {
+  padding:24px 3.2vw;
+  display:flex;
+  justify-content:space-between;
+  gap:24px;
+  color:#bcbcb4;
+  background:var(--ink);
+  font:600 10px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+.footer code { color:var(--acid); }
+@media (max-width:900px) {
+  .opening,.score-head,.below-score { grid-template-columns:1fr; }
+  .opening { gap:35px; }
+  .opening-note { max-width:600px; }
+  .score-head { align-items:start; }
+  .filterbar { justify-content:flex-start; }
+  .transport { grid-template-columns:1fr; }
+  .transport-status { min-width:0; }
+  .runtime-readout { grid-template-columns:1fr 1fr; }
+  .runtime-cell:nth-child(2) { border-right:0; }
+}
+@media (max-width:640px) {
+  .masthead { align-items:flex-start; padding:15px 18px; }
+  .mast-meta { display:none; }
+  .score-nav a:not(:first-child) { display:none; }
+  .opening { padding:40px 18px 30px; }
+  h1 { font-size:58px; }
+  .measure-strip { grid-template-columns:1fr 1fr; }
+  .measure { min-height:94px; padding:17px 18px; border-bottom:1px solid var(--ink); }
+  .measure:nth-child(even) { border-right:0; }
+  .score-section,.below-score,.transcript { padding-left:18px; padding-right:18px; }
+  .score-section { margin-top:36px; }
+  .scenario-field { width:100%; min-width:0; margin-right:0; }
+  .transport-button { flex:1 1 90px; }
+  .runtime-readout { grid-template-columns:1fr; }
+  .runtime-cell { border-right:0; }
+  .time-row,.score-row { grid-template-columns:128px minmax(1950px,1fr); }
+  .time-row,.score-row { min-width:2078px; }
+  .lane-label,.time-label { padding-left:10px; padding-right:10px; }
+  .event-grid { grid-template-columns:1fr; }
+  .payload { grid-column:1; }
+  .footer { flex-direction:column; padding:22px 18px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  html { scroll-behavior:auto; }
+  .score-note { transition:none; }
+}
+"""
+    script = """
+const seedEvents=__SEED_EVENTS__;
+const seedRuns=__SEED_RUNS__;
+const projections={
+  office:{
+    label:'RECORDED OFFICE / SOURCE REPLAY',
+    map:{}
+  },
+  release:{
+    label:'RELEASE TRAIN / DETERMINISTIC PROJECTION',
+    map:{
+      'docs-agent':'release-notes',
+      'deps-agent':'dependency-scout',
+      'sre-agent':'release-warden',
+      'human:priya':'release-manager',
+      'recorded-office':'baton-runtime',
+      'memory-distiller':'review-committee'
+    }
+  },
+  incident:{
+    label:'INCIDENT CELL / DETERMINISTIC PROJECTION',
+    map:{
+      'docs-agent':'comms-scribe',
+      'deps-agent':'service-investigator',
+      'sre-agent':'incident-commander',
+      'human:priya':'human-lead',
+      'recorded-office':'baton-runtime',
+      'memory-distiller':'postmortem-review'
+    }
+  }
+};
+const filters=[...document.querySelectorAll('.filter')];
+const transcript=[...document.querySelectorAll('tbody tr')];
+const fields={
+  sequence:document.querySelector('[data-detail="sequence"]'),
+  kind:document.querySelector('[data-detail="kind"]'),
+  time:document.querySelector('[data-detail="time"]'),
+  actor:document.querySelector('[data-detail="actor"]'),
+  run:document.querySelector('[data-detail="run"]'),
+  payload:document.querySelector('[data-detail="payload"]')
+};
+const scenario=document.querySelector('#scenario');
+const scoreRows=document.querySelector('#scoreRows');
+const timeTrack=document.querySelector('#timeTrack');
+const performers=document.querySelector('#performers');
+const cueState=document.querySelector('#cueState');
+const progress=document.querySelector('#progress');
+const readout={
+  cue:document.querySelector('[data-runtime="cue"]'),
+  claims:document.querySelector('[data-runtime="claims"]'),
+  advisories:document.querySelector('[data-runtime="advisories"]'),
+  objective:document.querySelector('[data-runtime="objective"]')
+};
+let timer=null;
+let cursor=seedEvents.length;
+let mode='REPLAY COMPLETE';
+let currentFilter='';
+let selectedSequence=seedEvents.length;
+function projectedActor(actor){
+  return projections[scenario.value].map[actor]||actor;
+}
+function currentEvents(){
+  return seedEvents.map(event=>({...event,actor:projectedActor(event.actor)}));
+}
+function inspect(event){
+  if(!event){
+    document.querySelectorAll('.score-note').forEach(note=>{
+      note.setAttribute('aria-pressed','false');
+    });
+    fields.sequence.textContent='—';
+    fields.kind.textContent='Waiting for downbeat';
+    fields.time.textContent='—';
+    fields.actor.textContent='—';
+    fields.run.textContent='—';
+    fields.payload.textContent='No event has entered the score.';
+    return;
+  }
+  selectedSequence=event.sequence;
+  document.querySelectorAll('.score-note').forEach(note=>{
+    note.setAttribute('aria-pressed',String(Number(note.dataset.sequence)===event.sequence));
+  });
+  fields.sequence.textContent=String(event.sequence).padStart(2,'0');
+  fields.kind.textContent=event.kind;
+  fields.time.textContent=event.time;
+  fields.actor.textContent=event.actor;
+  fields.run.textContent=event.run;
+  fields.payload.textContent=JSON.stringify(event.payload,null,2);
+}
+function deriveState(events){
+  let claims=0;
+  let advisories=0;
+  let objective='Routine objectives pinned';
+  const runStates=Object.fromEntries(seedRuns.map(run=>[run.id,'WAITING']));
+  events.forEach(event=>{
+    if(event.kind==='CLAIM_GRANTED') claims+=1;
+    if(event.kind==='CLAIM_RELEASED') claims=Math.max(0,claims-1);
+    if(event.kind==='ADVISORY_PUBLISHED') advisories+=1;
+    if(event.kind==='ADVISORY_RETRACTED') advisories=Math.max(0,advisories-1);
+    if(event.kind==='OBJECTIVE_UPDATED') objective=event.payload.new||'Objective updated';
+    if(event.run!=='fleet'&&runStates[event.run]){
+      if(event.kind==='RUN_STARTED'||event.kind==='RUN_RESUMED') runStates[event.run]='RUNNING';
+      if(event.kind==='RUN_INTERRUPTED') runStates[event.run]='RECOVERING';
+      if(event.kind==='RUN_COMPLETED') runStates[event.run]='COMPLETE';
+    }
+  });
+  return {claims,advisories,objective,runStates};
+}
+function noteFor(event){
+  const button=document.createElement('button');
+  button.className=`score-note ${event.family}`;
+  button.style.gridColumn=event.sequence;
+  button.dataset.kind=event.kind;
+  button.dataset.sequence=event.sequence;
+  button.setAttribute('aria-label',`Event ${event.sequence}: ${event.kind} by ${event.actor} at ${event.time}`);
+  const number=document.createElement('span');
+  number.textContent=event.sequence;
+  const full=document.createElement('b');
+  full.className='sr-only';
+  full.textContent=event.kind;
+  button.append(number,full);
+  button.addEventListener('click',()=>inspect(event));
+  return button;
+}
+function renderPerformers(state){
+  performers.replaceChildren();
+  seedRuns.forEach((run,index)=>{
+    const li=document.createElement('li');
+    const part=document.createElement('span');
+    part.className='part';
+    part.textContent=String(index+1).padStart(2,'0');
+    const copy=document.createElement('div');
+    const agent=document.createElement('strong');
+    agent.textContent=projectedActor(run.agent);
+    const id=document.createElement('small');
+    id.textContent=run.id;
+    copy.append(agent,id);
+    const status=document.createElement('span');
+    status.className='performer-status';
+    status.dataset.state=state.runStates[run.id];
+    status.textContent=state.runStates[run.id];
+    const budget=document.createElement('div');
+    budget.className='budget';
+    budget.title=`${run.usedTokens} of ${run.maxTokens} token envelope used in source replay`;
+    const usage=document.createElement('i');
+    usage.style.width=`${Math.min(100,(run.usedTokens/run.maxTokens)*100)}%`;
+    budget.append(usage);
+    li.append(part,copy,status,budget);
+    performers.append(li);
+  });
+}
+function render(){
+  const all=currentEvents();
+  const played=all.slice(0,cursor);
+  const state=deriveState(played);
+  const actors=[...new Set(all.map(event=>event.actor))];
+  scoreRows.replaceChildren();
+  actors.forEach(actor=>{
+    const row=document.createElement('div');
+    row.className='score-row';
+    const label=document.createElement('div');
+    label.className='lane-label';
+    const name=document.createElement('strong');
+    name.textContent=actor;
+    const count=document.createElement('span');
+    const playedCount=played.filter(event=>event.actor===actor).length;
+    count.textContent=`${playedCount} / ${all.filter(event=>event.actor===actor).length} cues`;
+    label.append(name,count);
+    const staff=document.createElement('div');
+    staff.className='staff';
+    staff.style.setProperty('--beats',all.length);
+    staff.setAttribute('aria-label',`${actor} event lane`);
+    played.filter(event=>event.actor===actor).forEach(event=>{
+      const note=noteFor(event);
+      note.hidden=Boolean(currentFilter&&!event.kind.includes(currentFilter));
+      staff.append(note);
+    });
+    row.append(label,staff);
+    scoreRows.append(row);
+  });
+  timeTrack.replaceChildren();
+  all.forEach((event,index)=>{
+    const tick=document.createElement('span');
+    tick.textContent=event.time.slice(11,16);
+    tick.style.opacity=index<cursor?'1':'.24';
+    timeTrack.append(tick);
+  });
+  const current=played.at(-1);
+  readout.cue.textContent=current?`${current.sequence} · ${current.kind}`:'Waiting for downbeat';
+  readout.claims.textContent=String(state.claims).padStart(2,'0');
+  readout.advisories.textContent=String(state.advisories).padStart(2,'0');
+  readout.objective.textContent=state.objective;
+  cueState.textContent=`${mode} · ${cursor}/${all.length}`;
+  progress.style.width=`${(cursor/all.length)*100}%`;
+  renderPerformers(state);
+  const selected=played.find(event=>event.sequence===selectedSequence);
+  const eligible=[...played].reverse().find(event=>!currentFilter||event.kind.includes(currentFilter));
+  inspect(selected&&(!currentFilter||selected.kind.includes(currentFilter))?selected:eligible);
+  if(cursor>=all.length&&timer){
+    window.clearInterval(timer);
+    timer=null;
+    mode='REPLAY COMPLETE';
+    cueState.textContent=`${mode} · ${cursor}/${all.length}`;
+  }
+}
+function pause(nextMode='PAUSED'){
+  if(timer) window.clearInterval(timer);
+  timer=null;
+  mode=nextMode;
+  render();
+}
+function step(){
+  if(cursor<seedEvents.length) cursor+=1;
+  selectedSequence=cursor;
+  render();
+}
+function play(nextMode='CONDUCTING'){
+  if(cursor>=seedEvents.length) cursor=0;
+  if(timer) window.clearInterval(timer);
+  mode=nextMode;
+  render();
+  timer=window.setInterval(step,nextMode==='RECOVERY REPLAY'?520:360);
+}
+document.querySelector('#start').addEventListener('click',()=>play());
+document.querySelector('#pause').addEventListener('click',()=>pause());
+document.querySelector('#step').addEventListener('click',()=>{
+  pause('STEP MODE');
+  step();
+});
+document.querySelector('#reset').addEventListener('click',()=>{
+  pause('RESET / READY');
+  cursor=0;
+  selectedSequence=0;
+  render();
+});
+document.querySelector('#recover').addEventListener('click',()=>{
+  pause('RECOVERY ARMED');
+  const index=seedEvents.findIndex(event=>event.kind==='RUN_INTERRUPTED');
+  cursor=Math.max(0,index);
+  selectedSequence=cursor;
+  play('RECOVERY REPLAY');
+});
+scenario.addEventListener('change',()=>{
+  pause(projections[scenario.value].label);
+  cursor=0;
+  selectedSequence=0;
+  render();
+});
+filters.forEach(button=>button.addEventListener('click',()=>{
+  filters.forEach(item=>{
+    item.classList.remove('active');
+    item.setAttribute('aria-pressed','false');
+  });
+  button.classList.add('active');
+  button.setAttribute('aria-pressed','true');
+  currentFilter=button.dataset.filter;
+  transcript.forEach(row=>row.hidden=Boolean(
+    currentFilter&&!row.dataset.kind.includes(currentFilter)
+  ));
+  render();
+}));
+render();
+""".replace("__SEED_EVENTS__", seed_events_json).replace(
+        "__SEED_RUNS__", seed_runs_json
     )
     document = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BATON — recorded office timeline</title>
-<style>
-:root{{--bg:#070910;--panel:#0e111d;--panel-2:#131728;--line:#252a42;
---text:#f7f7ff;--muted:#8d94ad;--faint:#626980;--violet:#9a86ff;
---violet-2:#6655e8;--cyan:#67d8ef;--green:#68e6a2;--amber:#f1c76d;
---shadow:0 26px 76px rgba(0,0,0,.42)}}
-*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;color:var(--text);
-background:radial-gradient(circle at 75% 0,rgba(102,85,232,.2),transparent 32rem),
-radial-gradient(circle at 12% 30%,rgba(103,216,239,.07),transparent 26rem),var(--bg);
-font:14px/1.55 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
-button{{font:inherit}}.topbar{{height:58px;padding:0 26px;display:flex;align-items:center;
-justify-content:space-between;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;
-background:rgba(7,9,16,.86);backdrop-filter:blur(16px)}}.brand{{display:flex;align-items:center;
-gap:11px;font-weight:780;letter-spacing:.02em}}.brand-mark{{width:27px;height:27px;
-display:grid;place-items:center;border-radius:8px;background:linear-gradient(135deg,var(--violet),
-var(--violet-2));color:#080911;box-shadow:0 0 24px rgba(154,134,255,.28)}}.topmeta{{
-display:flex;align-items:center;gap:15px;color:var(--muted);font:10px ui-monospace,
-SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.11em}}.online{{
-display:flex;gap:7px;align-items:center;color:#c6f4da}}.online:before{{content:"";width:6px;height:6px;
-border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}}main{{
-max-width:1380px;margin:auto;padding:30px 26px 64px}}.hero{{display:grid;
-grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);border:1px solid var(--line);
-border-radius:18px;overflow:hidden;background:linear-gradient(145deg,rgba(20,24,42,.97),
-rgba(11,14,25,.98));box-shadow:var(--shadow)}}.hero-copy{{padding:36px 38px}}.eyebrow,
-.section-label{{margin:0 0 13px;color:var(--violet);font:750 10px ui-monospace,
-SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.16em}}.eyebrow:before{{
-content:"";display:inline-block;width:24px;height:1px;background:currentColor;vertical-align:middle;
-margin-right:9px}}h1{{font-size:clamp(38px,5vw,66px);line-height:.98;letter-spacing:-.05em;
-margin:0;max-width:760px}}h2{{font-size:21px;letter-spacing:-.02em}}.lede{{font-size:17px;
-color:#b4bad0;max-width:720px;margin:20px 0 0}}.control-panel{{border-left:1px solid var(--line);
-padding:28px;background:rgba(7,9,16,.28)}}.control-head{{display:flex;align-items:center;
-justify-content:space-between;margin-bottom:18px}}.control-head span{{color:var(--cyan);
-font:10px ui-monospace,monospace}}.pulse{{height:2px;background:var(--line);position:relative;
-margin:16px 0 24px}}.pulse:after{{content:"";position:absolute;left:0;top:0;height:100%;width:72%;
-background:linear-gradient(90deg,var(--violet),var(--cyan));box-shadow:0 0 14px var(--violet)}}
-.control-row{{display:grid;grid-template-columns:1fr auto;gap:18px;padding:11px 0;
-border-bottom:1px solid var(--line)}}.control-row span{{color:var(--muted)}}.control-row strong{{
-font:700 11px ui-monospace,monospace}}.metric-grid{{display:grid;grid-template-columns:
-repeat(4,minmax(0,1fr));gap:12px;margin:17px 0}}.metric{{border:1px solid var(--line);
-border-radius:13px;background:rgba(14,17,29,.9);padding:17px}}.metric strong{{display:block;
-font-size:26px;line-height:1.15}}.metric span{{display:block;color:var(--muted);margin-top:7px;
-font-size:10px;text-transform:uppercase;letter-spacing:.1em}}.workspace{{display:grid;
-grid-template-columns:minmax(250px,.32fr) minmax(0,1fr);gap:14px}}.panel{{border:1px solid var(--line);
-border-radius:15px;background:linear-gradient(180deg,rgba(17,21,36,.97),rgba(10,13,23,.98));
-overflow:hidden}}.panel-head{{padding:18px 20px;border-bottom:1px solid var(--line);
-display:flex;align-items:center;justify-content:space-between;gap:16px}}.panel-head h2{{margin:0}}
-.panel-head p{{margin:3px 0 0;color:var(--muted);font-size:12px}}.agent-list{{padding:12px}}
-.agent-card{{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid transparent;
-border-radius:11px}}.agent-card+ .agent-card{{border-top-color:var(--line);border-radius:0}}
-.avatar{{width:38px;height:38px;flex:0 0 auto;border-radius:11px;display:grid;place-items:center;
-background:linear-gradient(145deg,#242b48,#191e34);border:1px solid #343c61;color:#dcd7ff;
-font:750 11px ui-monospace,monospace}}.agent-copy{{min-width:0}}.agent-copy p{{margin:0;
-font-weight:700}}.agent-copy strong{{display:flex;align-items:center;gap:6px;color:var(--green);
-font:650 10px ui-monospace,monospace;text-transform:uppercase}}.agent-copy strong i{{
-width:5px;height:5px;border-radius:50%;background:currentColor}}.agent-copy small{{display:block;
-color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:10px
-ui-monospace,monospace}}.filterbar{{display:flex;gap:6px;flex-wrap:wrap}}.filter{{border:1px solid
-var(--line);border-radius:7px;padding:6px 9px;background:#0c0f1b;color:var(--muted);
-cursor:pointer;font:650 9px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.08em}}
-.filter:hover,.filter:focus-visible,.filter.active{{color:#fff;border-color:#574c9d;
-background:#241f48;outline:none}}.scroll{{overflow:auto;max-height:690px}}table{{width:100%;
-border-collapse:collapse;font-size:12px}}th,td{{text-align:left;padding:11px 13px;
-border-bottom:1px solid var(--line);white-space:nowrap}}th{{position:sticky;top:0;z-index:1;
-background:#101421;color:var(--faint);font:700 9px ui-monospace,monospace;text-transform:uppercase;
-letter-spacing:.1em}}tbody tr:hover{{background:rgba(103,216,239,.035)}}.kind{{font:650 9px
-ui-monospace,monospace;background:#201c42;color:#c6bcff;border:1px solid #393267;padding:4px 7px;
-border-radius:6px}}.note{{display:flex;justify-content:space-between;gap:20px;margin-top:20px;
-padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}}code{{
-color:#c8c2ff}}@media(max-width:980px){{.hero,.workspace{{grid-template-columns:1fr}}
-.control-panel{{border-left:0;border-top:1px solid var(--line)}}.metric-grid{{
-grid-template-columns:1fr 1fr}}}}@media(max-width:640px){{.topbar{{padding:0 14px}}.topmeta>span:first-child{{
-display:none}}main{{padding:18px 14px 42px}}.hero-copy,.control-panel{{padding:24px 20px}}
-.metric-grid{{grid-template-columns:1fr 1fr}}.panel-head{{align-items:start;flex-direction:column}}
-.note{{flex-direction:column}}}}@media(prefers-reduced-motion:reduce){{html{{scroll-behavior:auto}}}}
-</style></head><body>
-<header class="topbar"><div class="brand"><span class="brand-mark">B</span>BATON</div>
-<div class="topmeta"><span>fleet control / morning routine</span><span class="online">replay complete</span>
-</div></header><main><section class="hero"><div class="hero-copy">
-<p class="eyebrow">Organization runtime · Journey 0</p><h1>A legible morning.</h1>
-<p class="lede">Three durable agents coordinate claims, advisories, objectives,
-budgets, and memory through one append-only operating record.</p></div>
-<aside class="control-panel"><div class="control-head"><p class="section-label">Control plane</p>
-<span>SESSION 07:30—09:10</span></div><div class="pulse"></div>
-<div class="control-row"><span>Durability</span><strong>SQLITE / PINNED</strong></div>
-<div class="control-row"><span>Coordination</span><strong>LEASED</strong></div>
-<div class="control-row"><span>Memory gate</span><strong>EVAL REQUIRED</strong></div>
-<div class="control-row"><span>Recovery</span><strong>CLOSE / REOPEN</strong></div></aside></section>
-<section class="metric-grid" aria-label="Fleet metrics">
-<div class="metric"><strong>{len(runs)}</strong><span>durable runs</span></div>
-<div class="metric"><strong>{claims}</strong><span>claim grants</span></div>
-<div class="metric"><strong>{advisories}</strong><span>advisories</span></div>
-<div class="metric"><strong>{promoted}/{undetermined}</strong><span>promoted / undetermined</span></div>
-</section><section class="workspace"><aside class="panel"><div class="panel-head"><div>
-<p class="section-label">Fleet roster</p><h2>Agents on duty</h2></div></div>
-<div class="agent-list">{run_cards}</div></aside><section class="panel">
-<div class="panel-head"><div><p class="section-label">Append-only event ledger</p>
-<h2>Fleet timeline</h2><p>Filter the view without changing the durable record.</p></div>
-<div class="filterbar" role="group" aria-label="Filter event timeline">
-<button class="filter active" data-filter="">All</button>
-<button class="filter" data-filter="RUN">Runs</button>
-<button class="filter" data-filter="CLAIM">Claims</button>
-<button class="filter" data-filter="ADVISORY">Advisories</button>
-<button class="filter" data-filter="LESSON">Memory</button></div></div>
-<div class="scroll"><table>
-<thead><tr><th>#</th><th>Logical time</th><th>Actor</th><th>Event</th><th>Run</th></tr></thead>
-<tbody>{event_rows}</tbody></table></div></section></section>
-<footer class="note"><span>Fixture-derived implementation evidence, not a reliability benchmark.</span>
-<span>Generated by <code>make demo</code> · SQLite retains complete payloads.</span></footer>
-</main><script>
-const buttons=[...document.querySelectorAll('.filter')];
-const rows=[...document.querySelectorAll('tbody tr')];
-buttons.forEach(button=>button.addEventListener('click',()=>{{
-  buttons.forEach(item=>item.classList.remove('active'));
-  button.classList.add('active');
-  const filter=button.dataset.filter;
-  rows.forEach(row=>row.hidden=filter && !row.dataset.kind.includes(filter));
-}}));
-</script></body></html>
+<meta name="color-scheme" content="light">
+<title>BATON — the recorded office score</title>
+<style>{stylesheet}</style></head><body>
+<a class="skip-link" href="#main">Skip to interactive score</a>
+<header class="masthead"><div class="wordmark">BATON
+<span>Recorded office / score 01</span></div>
+<nav class="score-nav" aria-label="Product navigation">
+<a href="../">Overview</a><a href="../architecture/">Architecture</a>
+<a href="https://github.com/Aneesh-Pothuru/baton">Source</a></nav>
+<div class="mast-meta"><span>SQLite / pinned</span>
+<span><strong>●</strong> Replay complete</span></div></header>
+<main id="main"><section class="opening"><div>
+<p class="kicker">Journey 0 · Three agents · One durable record</p>
+<h1>The morning,<br><em>conducted.</em></h1></div>
+<aside class="opening-note"><p>Not a dashboard of agents. A score of how a
+living organization moved—every entrance, claim, warning, handoff, and lesson
+held on one shared line of time.</p>
+<div class="principles"><span>Leased coordination</span><span>01</span>
+<span>Eval-gated memory</span><span>02</span>
+<span>Close / reopen recovery</span><span>03</span></div></aside></section>
+<section class="measure-strip" aria-label="Performance summary">
+<div class="measure"><strong>{len(runs):02d}</strong><span>performers / durable runs</span></div>
+<div class="measure"><strong>{claims:02d}</strong><span>claim grants / coordinated</span></div>
+<div class="measure"><strong>{advisories:02d}</strong><span>advisories / delivered</span></div>
+<div class="measure"><strong>{promoted}:{undetermined}</strong>
+<span>memory / promoted : undetermined</span></div></section>
+<section class="score-section" aria-labelledby="score-title">
+<div class="score-head"><div><span class="section-number">I / THE SCORE</span>
+<h2 id="score-title">Every cue, in time.</h2>
+<p>Read left to right across the ensemble. Select a note to inspect its complete
+durable event; filter the notation without changing the record.</p></div>
+<div class="filterbar" role="group" aria-label="Filter event score">
+<button type="button" class="filter active" data-filter=""
+aria-pressed="true">Full score</button>
+<button type="button" class="filter" data-filter="RUN"
+aria-pressed="false">Runs</button>
+<button type="button" class="filter" data-filter="CLAIM"
+aria-pressed="false">Claims</button>
+<button type="button" class="filter" data-filter="ADVISORY"
+aria-pressed="false">Advisories</button>
+<button type="button" class="filter" data-filter="LESSON"
+aria-pressed="false">Memory</button></div></div>
+<div class="transport" aria-label="Replay controls"><div class="transport-main">
+<div class="scenario-field"><label for="scenario">Organization scenario</label>
+<select id="scenario"><option value="office">Recorded office · source evidence</option>
+<option value="release">Release train · projection</option>
+<option value="incident">Incident cell · projection</option></select></div>
+<button class="transport-button primary" id="start">Start</button>
+<button class="transport-button" id="pause">Pause</button>
+<button class="transport-button" id="step">Step</button>
+<button class="transport-button" id="reset">Reset</button>
+<button class="transport-button recovery" id="recover">Replay recovery</button>
+</div><div class="transport-status" role="status"><span>Conductor state</span>
+<strong id="cueState">REPLAY COMPLETE</strong><div class="progress">
+<i id="progress"></i></div></div></div>
+<div class="runtime-readout" aria-label="Live organization state">
+<p class="projection-note">The source scenario replays repository evidence.
+Alternate organizations are deterministic client-side projections of the same
+event semantics; they do not claim additional measured runs.</p>
+<div class="runtime-cell"><span>Current cue</span>
+<strong data-runtime="cue">—</strong></div>
+<div class="runtime-cell"><span>Active claims</span>
+<strong data-runtime="claims">00</strong></div>
+<div class="runtime-cell"><span>Live advisories</span>
+<strong data-runtime="advisories">00</strong></div>
+<div class="runtime-cell"><span>Pinned objective</span>
+<strong data-runtime="objective">Routine objectives pinned</strong></div></div>
+<div class="score-shell"><div class="score-scroll" tabindex="0"
+aria-label="Horizontally scrollable Fleet timeline conductor score">
+<div class="time-row"><div class="time-label">logical time →</div>
+<div class="time-track" id="timeTrack" style="--beats:{event_count}">{time_cells}</div></div>
+<div id="scoreRows">{score_lanes}</div></div>
+<div class="legend" aria-label="Score notation legend">
+<span><i></i>run / routine</span><span><i class="key-claim"></i>claim</span>
+<span><i class="key-direction"></i>direction</span>
+<span><i class="key-memory"></i>memory</span>
+<span><i class="key-execution"></i>checkpoint / tool</span></div></div></section>
+<section class="below-score"><section class="ensemble">
+<p class="mini-title">II / Ensemble on duty</p><ol class="performers"
+id="performers">{performer_rows}</ol>
+</section><aside class="stage-note" aria-live="polite">
+<p class="mini-title">Selected stage note</p><div class="event-heading">
+<strong class="event-number" data-detail="sequence">01</strong><div>
+<h3 data-detail="kind">Select a note</h3>
+<p>append-only event / exact provenance</p></div></div>
+<div class="event-grid"><div><span>Logical time</span>
+<code data-detail="time">—</code></div><div><span>Actor</span>
+<code data-detail="actor">—</code></div><div><span>Run</span>
+<code data-detail="run">—</code></div><div class="payload"><span>Payload</span>
+<code data-detail="payload">—</code></div></div></aside></section>
+<section class="transcript"><details><summary>III / Open the complete event transcript
+· {len(events)} immutable entries</summary><div class="table-scroll"><table>
+<thead><tr><th>#</th><th>Logical time</th><th>Actor</th><th>Event</th>
+<th>Run</th><th>Complete payload</th></tr></thead>
+<tbody>{transcript_rows}</tbody></table></div></details></section></main>
+<footer class="footer"><span>Fixture-derived implementation evidence,
+not a reliability benchmark.</span><span>Generated by <code>make demo</code>
+· SQLite retains complete payloads.</span></footer><script>{script}</script>
+</body></html>
 """
     target = Path(output)
     target.parent.mkdir(parents=True, exist_ok=True)

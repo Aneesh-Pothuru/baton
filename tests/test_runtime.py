@@ -213,10 +213,29 @@ class RuntimeTests(unittest.TestCase):
                 "ADVISORY_DELIVERED",
                 "RUN_RESUMED",
                 "LESSON_GATE_EVALUATED",
+                'id="scenario"',
+                'id="start"',
+                'id="pause"',
+                'id="step"',
+                'id="reset"',
+                'id="recover"',
+                'href="#main"',
+                'aria-pressed="true"',
+                "const seedEvents=",
             ):
                 self.assertIn(expected, timeline)
+            landing = (root / "docs/index.html").read_text(encoding="utf-8")
+            architecture = (
+                root / "docs/architecture/index.html"
+            ).read_text(encoding="utf-8")
+            self.assertIn("Agents need an", landing)
+            self.assertIn("Inspectable proof", landing)
+            self.assertIn('id="about"', landing)
+            self.assertIn('href="#main"', landing)
+            self.assertIn("State before", architecture)
+            self.assertIn("MVP limits", architecture)
+            self.assertIn('href="#main"', architecture)
 
 
 if __name__ == "__main__":
     unittest.main()
-

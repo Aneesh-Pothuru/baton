@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="How BATON makes coordinated agent routines
+durable, recoverable, and inspectable.">
+<meta name="color-scheme" content="light">
+<link rel="stylesheet" href="../assets/site.css">
+<title>BATON — architecture and limits</title></head>
+<body class="architecture-page"><a class="skip-link" href="#main">
+Skip to architecture</a><header class="site-nav">
+<a class="brand" href="../">BATON <span>architecture score</span></a>
+<nav aria-label="Main navigation"><a href="../#thesis">Thesis</a>
+<a href="../#evidence">Evidence</a>
+<a href="https://github.com/Aneesh-Pothuru/baton">GitHub</a>
+<a class="score-link" href="../demo/">Open the score →</a></nav></header>
+<main id="main"><section class="hero"><div><p class="eyebrow">System score /
+five durable movements</p><h1>State before <em>spectacle.</em></h1>
+<p class="hero-copy">BATON’s architecture is a compact organizational kernel.
+It records coordination decisions before visualizing them, and recovery is a
+normal state transition rather than an exceptional UI path.</p>
+<div class="actions"><a class="button primary" href="../demo/">Replay the
+implementation</a><a class="button ghost"
+href="https://github.com/Aneesh-Pothuru/baton">Read the source</a></div></div>
+<aside class="cover-note"><span class="proof-label">Durability contract</span>
+<p class="quote">If a decision cannot survive restart, it is not organizational
+memory.</p><ul class="cover-facts"><li><span>Storage</span>
+<strong>SQLite / WAL-safe commits</strong></li><li><span>Ordering</span>
+<strong>Monotonic sequence</strong></li><li><span>Handoffs</span>
+<strong>Versioned / pinned</strong></li><li><span>Projection</span>
+<strong>Static / keyless</strong></li></ul></aside></section>
+<section class="section"><div class="section-heading"><div>
+<p class="section-index">I / Runtime topology</p>
+<h2>Five layers. One record.</h2></div><p>Each layer has one narrow job, so an
+operator can follow an objective from scheduled intent to durable evidence
+without reverse-engineering a framework’s internal graph.</p></div>
+<div class="architecture-flow"><article class="architecture-node">
+<span>01 / ROUTINE</span><h3>Declare</h3><p>Schedule, objective, constraints,
+budget, coordination, memory, workspace.</p></article>
+<article class="architecture-node"><span>02 / HANDOFF</span><h3>Pin</h3>
+<p>Version the exact instructions and active advisories read by the run.</p>
+</article><article class="architecture-node"><span>03 / CLAIM</span>
+<h3>Coordinate</h3><p>Lease a scope with an opaque owner token or join its
+FIFO queue.</p></article><article class="architecture-node">
+<span>04 / CHECKPOINT</span><h3>Recover</h3><p>Commit step, workspace ref,
+harness state, and handoff version.</p></article>
+<article class="architecture-node"><span>05 / EVENT</span><h3>Explain</h3>
+<p>Append the transition and render it into the shared organizational score.</p>
+</article></div></section>
+<section class="section"><div class="section-heading"><div>
+<p class="section-index">II / Operational contracts</p>
+<h2>The boundaries are the interface.</h2></div><p>The prototype makes its
+consistency points explicit. That keeps claims and recovery testable with no
+external service and makes omissions visible.</p></div><div class="detail-grid">
+<article class="detail"><p class="section-index">Claims</p>
+<h3>Compare-and-delete release.</h3><p>Only the opaque owner token can release
+a live claim. Expiry or valid release grants the next queued contender in
+deterministic order.</p></article><article class="detail">
+<p class="section-index">Advisories</p><h3>Data, never hidden commands.</h3>
+<p>Topic-scoped advisories carry publisher, severity, TTL, and provenance.
+Agents receive them only at a step boundary and record their reaction.</p>
+</article><article class="detail"><p class="section-index">Recovery</p>
+<h3>Resume from the durable edge.</h3><p><code>Runtime.resume</code> restores
+the latest checkpoint and its exact handoff. Work after that edge must be
+re-executed, never imagined complete.</p></article><article class="detail">
+<p class="section-index">Memory</p><h3>Abstention is a valid verdict.</h3>
+<p>Invalid or missing comparison evidence yields <code>UNDETERMINED</code>.
+Positive registered deltas promote; non-positive evidence archives.</p>
+</article></div></section>
+<section class="boundary"><div><p class="section-index">III / MVP limits</p>
+<h2>What this score does not claim.</h2></div><ul class="boundary-list">
+<li><strong>Single node</strong><span>SQLite coordination is process-local;
+there is no distributed consensus or cross-host lease service.</span></li>
+<li><strong>Harness scope</strong><span>Claims cover BATON-dispatched work,
+not arbitrary operating-system writes.</span></li>
+<li><strong>Recorded agents</strong><span>The demo is deterministic and ships
+no model SDK, provider account, or quality claim.</span></li>
+<li><strong>Fixture eval</strong><span>The promoted lesson proves gate behavior
+for registered scores, not compounding from run 1 to run 20.</span></li>
+<li><strong>Static UI</strong><span>Scenario controls are client-side
+projections; the source office remains the only measured replay.</span></li>
+</ul></section><section class="cta"><p class="section-index">See the state move</p>
+<h2>Replay every contract on the conductor score.</h2>
+<a class="button" href="../demo/">Open interactive Journey 0 →</a></section>
+</main><footer class="site-footer"><span>Architecture derived from the shipped
+single-node implementation.</span><span><a href="../">Overview</a> ·
+<a href="https://github.com/Aneesh-Pothuru/baton">Source on GitHub</a></span>
+</footer></body></html>

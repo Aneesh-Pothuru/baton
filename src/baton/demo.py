@@ -320,6 +320,7 @@ coordinated agent routines, recoverable handoffs, and eval-gated memory.">
 <header class="site-nav"><a class="brand" href="./">BATON
 <span>organization runtime</span></a><nav aria-label="Main navigation">
 <a href="#thesis">Thesis</a><a href="#evidence">Evidence</a>
+<a href="#installed">Installed product</a>
 <a href="#about">About</a>
 <a href="architecture/">Architecture</a>
 <a href="https://github.com/Aneesh-Pothuru/baton">GitHub</a>
@@ -411,11 +412,32 @@ connection, reopens it, restores step 2, then continues. The
 <h3>Promotion is an evaluated event.</h3><p>Candidate scores beat their
 registered baselines before the fixture lesson is marked promoted. See the
 <a href="demo/">complete event transcript</a>.</p></article></div></div></section>
+<section class="section" id="installed"><div class="section-heading"><div>
+<p class="section-index">IV / Installed control plane</p>
+<h2>The runtime is not trapped in the demo.</h2></div>
+<p>Install BATON to expose the same durable engine through a local HTTP
+service. Caller-owned loops register routines, coordinate work, persist tool
+boundaries, and resume after restart; the score can read those real events.</p>
+</div><div class="problem-grid"><article class="problem"><b>01</b>
+<h3>Register &amp; fire.</h3><p>Versioned routine specs become durable runs
+with pinned constraints, budgets, subscriptions, and declared work claims.</p>
+</article><article class="problem"><b>02</b><h3>Coordinate live.</h3>
+<p>Claims, scoped advisories, objective changes, and usage signals use explicit
+API transitions with structured errors and an append-only event trail.</p>
+</article><article class="problem"><b>03</b><h3>Restart &amp; prove.</h3>
+<p>SQLite retains checkpoints and handoffs. Resume restores the last durable
+edge, while the evidence endpoint returns its exact versions and events.</p>
+</article></div><div class="actions">
+<a class="button primary" href="demo/">Open fixture / live score</a>
+<a class="button ghost"
+href="https://github.com/Aneesh-Pothuru/baton/blob/main/docs/API.md">
+Read the HTTP contract</a></div></section>
 <section class="architecture"><div class="section-heading"><div>
-<p class="section-index">IV / Architecture</p>
+<p class="section-index">V / Architecture</p>
 <h2>One compact, durable spine.</h2></div><p>The MVP stays deliberately small:
-standard-library Python and SQLite, no model SDK, no server needed for the
-published evidence. The runtime is the product; the score is its projection.</p>
+standard-library Python and SQLite, no model SDK, and no server needed for the
+published fixture. The optional local service exposes the actual runtime; the
+score remains its projection.</p>
 </div><div class="architecture-flow" aria-label="BATON architecture flow">
 <article class="architecture-node"><span>01 / INPUT</span><h3>Routine spec</h3>
 <p>Objective, schedule, budgets, claims, subscriptions, and workspace ref.</p>
@@ -427,11 +449,12 @@ together.</p></article><article class="architecture-node"><span>04 / RECORD</spa
 <h3>Event ledger</h3><p>Every organizational transition enters one ordered
 SQLite record.</p></article><article class="architecture-node">
 <span>05 / PROJECTION</span><h3>Conductor score</h3>
-<p>Static Pages turns that record into an interactive replay.</p></article>
+<p>Static Pages replays the fixture; the installed service can feed it current
+durable events.</p></article>
 </div><div class="actions"><a class="button ghost" href="architecture/">
 Read the architecture and limits</a></div></section>
 <section class="boundary" id="about"><div>
-<p class="section-index">V / About &amp; honest boundary</p>
+<p class="section-index">VI / About &amp; honest boundary</p>
 <h2>Small enough to inspect.</h2></div><ul class="boundary-list">
 <li><strong>It is</strong><span>A single-node runtime harness for deterministic,
 durable agent routines.</span></li><li><strong>It is not</strong>
@@ -467,6 +490,7 @@ Skip to architecture</a><header class="site-nav">
 <a class="brand" href="../">BATON <span>architecture score</span></a>
 <nav aria-label="Main navigation"><a href="../#thesis">Thesis</a>
 <a href="../#evidence">Evidence</a>
+<a href="../#installed">Installed product</a>
 <a href="https://github.com/Aneesh-Pothuru/baton">GitHub</a>
 <a class="score-link" href="../demo/">Open the score →</a></nav></header>
 <main id="main"><section class="hero"><div><p class="eyebrow">System score /
@@ -476,14 +500,15 @@ It records coordination decisions before visualizing them, and recovery is a
 normal state transition rather than an exceptional UI path.</p>
 <div class="actions"><a class="button primary" href="../demo/">Replay the
 implementation</a><a class="button ghost"
-href="https://github.com/Aneesh-Pothuru/baton">Read the source</a></div></div>
+href="https://github.com/Aneesh-Pothuru/baton/blob/main/docs/API.md">
+Read the service contract</a></div></div>
 <aside class="cover-note"><span class="proof-label">Durability contract</span>
 <p class="quote">If a decision cannot survive restart, it is not organizational
 memory.</p><ul class="cover-facts"><li><span>Storage</span>
 <strong>SQLite / WAL-safe commits</strong></li><li><span>Ordering</span>
 <strong>Monotonic sequence</strong></li><li><span>Handoffs</span>
 <strong>Versioned / pinned</strong></li><li><span>Projection</span>
-<strong>Static / keyless</strong></li></ul></aside></section>
+<strong>Fixture / live API</strong></li></ul></aside></section>
 <section class="section"><div class="section-heading"><div>
 <p class="section-index">I / Runtime topology</p>
 <h2>Five layers. One record.</h2></div><p>Each layer has one narrow job, so an
@@ -521,6 +546,11 @@ re-executed, never imagined complete.</p></article><article class="detail">
 <p class="section-index">Memory</p><h3>Abstention is a valid verdict.</h3>
 <p>Invalid or missing comparison evidence yields <code>UNDETERMINED</code>.
 Positive registered deltas promote; non-positive evidence archives.</p>
+</article><article class="detail"><p class="section-index">Control plane</p>
+<h3>One API over the same runtime.</h3><p>The local HTTP service performs real
+state transitions, returns structured errors, exposes evidence bundles, and
+serves the score same-origin when requested. It does not simulate an agent
+loop.</p>
 </article></div></section>
 <section class="boundary"><div><p class="section-index">III / MVP limits</p>
 <h2>What this score does not claim.</h2></div><ul class="boundary-list">
@@ -532,8 +562,9 @@ not arbitrary operating-system writes.</span></li>
 no model SDK, provider account, or quality claim.</span></li>
 <li><strong>Fixture eval</strong><span>The promoted lesson proves gate behavior
 for registered scores, not compounding from run 1 to run 20.</span></li>
-<li><strong>Static UI</strong><span>Scenario controls are client-side
-projections; the source office remains the only measured replay.</span></li>
+<li><strong>UI evidence</strong><span>Scenario controls are client-side
+projections. Fixture mode is the only measured replay; installed live mode
+reads real events but does not claim the caller’s work succeeded.</span></li>
 </ul></section><section class="cta"><p class="section-index">See the state move</p>
 <h2>Replay every contract on the conductor score.</h2>
 <a class="button" href="../demo/">Open interactive Journey 0 →</a></section>

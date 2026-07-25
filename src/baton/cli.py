@@ -6,8 +6,10 @@ import argparse
 import json
 from pathlib import Path
 
+from .config import ServiceConfig
 from .core import Runtime
 from .demo import register_office, run_demo
+from .server import serve
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -27,6 +29,15 @@ def _parser() -> argparse.ArgumentParser:
     resume = commands.add_parser("resume", help="restore the latest checkpoint")
     resume.add_argument("run_id")
     resume.add_argument("--database", default="reports/baton.sqlite")
+
+    service = commands.add_parser("serve", help="run the local HTTP control plane")
+    service.add_argument("--database")
+    service.add_argument("--host")
+    service.add_argument("--port", type=int)
+    service.add_argument(
+        "--static-dir",
+        help="optionally serve the landing site and interactive demo",
+    )
 
     commands.add_parser("clean", help="remove generated local artifacts")
     return parser
@@ -59,6 +70,23 @@ def main(argv: list[str] | None = None) -> int:
             restored = runtime.resume(args.run_id, "2026-07-24T09:31:00Z")
         print(json.dumps(restored, indent=2, sort_keys=True))
         return 0
+    if args.command == "serve":
+        configured = ServiceConfig.from_env()
+        config = ServiceConfig(
+            database=Path(args.database) if args.database else configured.database,
+            host=args.host or configured.host,
+            port=args.port if args.port is not None else configured.port,
+            api_token=configured.api_token,
+            allowed_origins=configured.allowed_origins,
+            static_dir=(
+                Path(args.static_dir)
+                if args.static_dir
+                else configured.static_dir
+            ),
+            max_body_bytes=configured.max_body_bytes,
+        ).validate()
+        serve(config)
+        return 0
     if args.command == "clean":
         for target in (
             Path("reports/baton.sqlite"),
@@ -70,4 +98,3 @@ def main(argv: list[str] | None = None) -> int:
         print("Removed generated BATON artifacts")
         return 0
     return 2
-

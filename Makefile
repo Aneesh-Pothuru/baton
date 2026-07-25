@@ -1,10 +1,13 @@
 PYTHON ?= python3
 export PYTHONPATH := src
 
-.PHONY: demo test lint reproduce-compounding reproduce-resume clean
+.PHONY: demo serve test lint reproduce-compounding reproduce-resume clean
 
 demo:
 	$(PYTHON) -m baton demo
+
+serve:
+	$(PYTHON) -m baton serve --static-dir docs
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
@@ -21,4 +24,3 @@ reproduce-resume:
 
 clean:
 	$(PYTHON) -m baton clean
-

@@ -5,7 +5,9 @@ The product has two primary surfaces:
 - the **landing site** at `docs/index.html`, which explains the thesis,
   implementation proof, architecture, and honest limits;
 - the **interactive score** at `docs/demo/index.html`, which conducts the
-  deterministic source replay and its clearly labeled client-side projections.
+  deterministic source replay and its clearly labeled client-side projections;
+- the **installed control plane**, which persists real routines, runs, claims,
+  advisories, handoffs, checkpoints, and events and can feed the score live.
 
 ## 1. First-time platform lead
 
@@ -98,3 +100,29 @@ record.
 **Recovery/failure state:** Missing, non-finite, mismatched, or empty comparison
 evidence produces `UNDETERMINED`; non-positive evidence is archived. The UI
 does not silently convert absence of evidence into success.
+
+## 5. Integrator running the installed product
+
+**Question:** Can BATON coordinate real caller-owned loops and survive restart?
+
+1. Install the wheel and start `baton serve` on loopback, optionally serving
+   `docs` from the same process.
+2. Register a routine through `POST /api/v1/routines`.
+3. Fire it; BATON starts the durable run, pins constraints, creates the initial
+   checkpoint, subscribes the run, and acquires its declared work claims.
+4. A caller-owned agent loop submits usage and tool-boundary checkpoints.
+5. An SRE integration publishes an advisory; the caller asks BATON to deliver
+   it at the next step boundary and records its own reaction.
+6. A human integration updates the objective with an explicit issuer.
+7. Restart the service, resume the run, and fetch its complete evidence bundle.
+8. In the score, select **Installed live service** to inspect current API events
+   instead of the embedded fixture.
+
+**Success state:** SQLite survives restart; the restored workspace reference,
+harness state, pinned constraints, advisory state, and objective match the
+latest checkpoint and handoff versions.
+
+**Recovery/failure state:** Invalid JSON and state transitions return structured
+4xx errors. Non-loopback startup without a token fails closed. If live mode
+cannot connect, the score names the failure and returns to the immutable replay
+without presenting it as live evidence.

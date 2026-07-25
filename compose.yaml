@@ -1,0 +1,21 @@
+services:
+  baton:
+    build: .
+    init: true
+    restart: unless-stopped
+    environment:
+      BATON_API_TOKEN: ${BATON_API_TOKEN:?Set BATON_API_TOKEN in .env}
+    ports:
+      - "127.0.0.1:${BATON_PORT:-8020}:8020"
+    volumes:
+      - baton-state:/app/state
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  baton-state:

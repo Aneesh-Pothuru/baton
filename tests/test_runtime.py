@@ -83,6 +83,24 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(len(active), 1)
                 self.assertEqual(active[0]["owner"], "two")
 
+    def test_expired_claim_grants_oldest_waiter_before_new_request(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with Runtime(Path(directory) / "baton.sqlite") as runtime:
+                runtime.acquire_claim(
+                    "repo:x", "one", ttl_seconds=2, now=1, logical_time="t1"
+                )
+                runtime.acquire_claim(
+                    "repo:x", "two", ttl_seconds=30, now=2, logical_time="t2"
+                )
+                result = runtime.acquire_claim(
+                    "repo:x", "three", ttl_seconds=30, now=4, logical_time="t3"
+                )
+                self.assertEqual(result, {"status": "QUEUED", "position": 1})
+                active = runtime.rows("claims")
+                self.assertEqual(active[0]["owner"], "two")
+                queued = runtime.rows("claim_queue")
+                self.assertEqual([row["owner"] for row in queued], ["three"])
+
     def test_advisory_and_objective_remain_pinned_at_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with Runtime(Path(directory) / "baton.sqlite") as runtime:
@@ -161,6 +179,15 @@ class RuntimeTests(unittest.TestCase):
     def test_lesson_gate_promotes_archives_and_abstains(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with Runtime(Path(directory) / "baton.sqlite") as runtime:
+                runtime.write_episode(
+                    episode_id="E1",
+                    run_id="fixture-run",
+                    task="registered gate fixture",
+                    trajectory_summary="source episode for gate behavior",
+                    outcome="fixture",
+                    cost=0,
+                    logical_time="t0",
+                )
                 promoted = runtime.gate_lesson(
                     lesson_id="L1",
                     text="good",
@@ -222,6 +249,9 @@ class RuntimeTests(unittest.TestCase):
                 'href="#main"',
                 'aria-pressed="true"',
                 "const seedEvents=",
+                'id="sourceMode"',
+                "Installed live service",
+                "/api/v1/events",
             ):
                 self.assertIn(expected, timeline)
             landing = (root / "docs/index.html").read_text(encoding="utf-8")
@@ -230,10 +260,13 @@ class RuntimeTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn("Agents need an", landing)
             self.assertIn("Inspectable proof", landing)
+            self.assertIn('id="installed"', landing)
+            self.assertIn("The runtime is not trapped in the demo", landing)
             self.assertIn('id="about"', landing)
             self.assertIn('href="#main"', landing)
             self.assertIn("State before", architecture)
             self.assertIn("MVP limits", architecture)
+            self.assertIn("One API over the same runtime", architecture)
             self.assertIn('href="#main"', architecture)
 
 

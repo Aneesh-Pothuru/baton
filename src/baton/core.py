@@ -38,9 +38,11 @@ class Runtime:
     def __init__(self, database: str | Path):
         self.database = Path(database)
         self.database.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.database)
+        self.connection = sqlite3.connect(self.database, timeout=30)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.execute("PRAGMA busy_timeout = 30000")
+        self.connection.execute("PRAGMA journal_mode = WAL")
         self._create_schema()
 
     def close(self) -> None:
@@ -546,7 +548,40 @@ class Runtime:
                 actor=str(active["owner"]),
                 payload={"scope": scope},
             )
-            active = None
+            queued = self.connection.execute(
+                "SELECT * FROM claim_queue WHERE scope=? ORDER BY id LIMIT 1",
+                (scope,),
+            ).fetchone()
+            if queued is None:
+                active = None
+            else:
+                self.connection.execute(
+                    "DELETE FROM claim_queue WHERE id=?", (queued["id"],)
+                )
+                next_owner = str(queued["owner"])
+                token = self._claim_token(scope, next_owner, now)
+                self.connection.execute(
+                    """
+                    INSERT INTO claims(scope,owner,owner_token,expires_at)
+                    VALUES(?,?,?,?)
+                    """,
+                    (scope, next_owner, token, now + ttl_seconds),
+                )
+                self.connection.commit()
+                self.event(
+                    logical_time,
+                    "CLAIM_GRANTED",
+                    actor=next_owner,
+                    payload={
+                        "scope": scope,
+                        "owner_token": token,
+                        "expires_at": now + ttl_seconds,
+                        "from_expiry_queue": True,
+                    },
+                )
+                active = self.connection.execute(
+                    "SELECT * FROM claims WHERE scope=?", (scope,)
+                ).fetchone()
         if active is None:
             token = self._claim_token(scope, owner, now)
             self.connection.execute(
@@ -602,6 +637,8 @@ class Runtime:
         now: int,
         logical_time: str,
     ) -> bool:
+        if ttl_seconds <= 0:
+            raise ValueError("claim TTL must be positive")
         cursor = self.connection.execute(
             """
             UPDATE claims SET expires_at=?
@@ -626,6 +663,8 @@ class Runtime:
         logical_time: str,
         next_ttl_seconds: int = 1800,
     ) -> dict[str, Any]:
+        if next_ttl_seconds <= 0:
+            raise ValueError("next claim TTL must be positive")
         active = self.connection.execute(
             "SELECT * FROM claims WHERE scope=?", (scope,)
         ).fetchone()
@@ -959,12 +998,24 @@ class Runtime:
         candidate_scores: list[float],
         logical_time: str,
     ) -> dict[str, Any]:
+        known_sources: set[str] = set()
+        if source_episode_ids:
+            placeholders = ",".join("?" for _ in source_episode_ids)
+            known_sources = {
+                str(row["id"])
+                for row in self.connection.execute(
+                    f"SELECT id FROM episodes WHERE id IN ({placeholders})",
+                    source_episode_ids,
+                )
+            }
         valid = (
             bool(baseline_scores)
             and len(baseline_scores) == len(candidate_scores)
             and all(math.isfinite(value) for value in baseline_scores)
             and all(math.isfinite(value) for value in candidate_scores)
             and bool(source_episode_ids)
+            and len(set(source_episode_ids)) == len(source_episode_ids)
+            and known_sources == set(source_episode_ids)
         )
         if not valid:
             status = "UNDETERMINED"
@@ -1484,6 +1535,38 @@ h2 {
   color:var(--acid);
   font:800 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
 }
+.service-bridge {
+  display:grid;
+  grid-template-columns:minmax(175px,.7fr) minmax(220px,1.3fr)
+    minmax(160px,.8fr) auto;
+  gap:12px;
+  align-items:end;
+  padding:16px 20px;
+  border:1px solid var(--line);
+  border-top:0;
+  background:rgba(255,255,255,.72);
+}
+.service-field { display:grid; gap:6px; }
+.service-field label {
+  color:var(--muted); font:700 .66rem var(--sans);
+  letter-spacing:.12em; text-transform:uppercase;
+}
+.service-field select,.service-field input {
+  width:100%; min-height:42px; border:1px solid var(--line);
+  border-radius:0; padding:9px 10px; background:var(--paper);
+  color:var(--ink); font:700 .78rem var(--sans);
+}
+.service-connect {
+  min-height:42px; border:1px solid var(--ink); padding:8px 16px;
+  background:var(--ink); color:var(--paper); cursor:pointer;
+  font:800 .72rem var(--sans); letter-spacing:.05em; text-transform:uppercase;
+}
+.service-state {
+  grid-column:1/-1; margin:0; color:var(--muted);
+  font:700 .69rem/1.5 var(--mono);
+}
+.service-state[data-state="live"] { color:#136b47; }
+.service-state[data-state="error"] { color:var(--vermilion); }
 .progress {
   height:4px;
   margin-top:10px;
@@ -1892,6 +1975,8 @@ tr[hidden] { display:none; }
   .filterbar { justify-content:flex-start; }
   .transport { grid-template-columns:1fr; }
   .transport-status { min-width:0; }
+  .service-bridge { grid-template-columns:1fr; }
+  .service-state { grid-column:1; }
   .runtime-readout { grid-template-columns:1fr 1fr; }
   .runtime-cell:nth-child(2) { border-right:0; }
 }
@@ -1969,6 +2054,13 @@ const timeTrack=document.querySelector('#timeTrack');
 const performers=document.querySelector('#performers');
 const cueState=document.querySelector('#cueState');
 const progress=document.querySelector('#progress');
+const sourceMode=document.querySelector('#sourceMode');
+const serviceEndpoint=document.querySelector('#serviceEndpoint');
+const serviceToken=document.querySelector('#serviceToken');
+const serviceConnect=document.querySelector('#serviceConnect');
+const serviceState=document.querySelector('#serviceState');
+const transcriptSection=document.querySelector('.transcript');
+serviceEndpoint.value=window.location.origin;
 const readout={
   cue:document.querySelector('[data-runtime="cue"]'),
   claims:document.querySelector('[data-runtime="claims"]'),
@@ -1976,15 +2068,17 @@ const readout={
   objective:document.querySelector('[data-runtime="objective"]')
 };
 let timer=null;
-let cursor=seedEvents.length;
+let activeEvents=seedEvents;
+let activeRuns=seedRuns;
+let cursor=activeEvents.length;
 let mode='REPLAY COMPLETE';
 let currentFilter='';
-let selectedSequence=seedEvents.length;
+let selectedSequence=activeEvents.length;
 function projectedActor(actor){
   return projections[scenario.value].map[actor]||actor;
 }
 function currentEvents(){
-  return seedEvents.map(event=>({...event,actor:projectedActor(event.actor)}));
+  return activeEvents.map(event=>({...event,actor:projectedActor(event.actor)}));
 }
 function inspect(event){
   if(!event){
@@ -2014,7 +2108,7 @@ function deriveState(events){
   let claims=0;
   let advisories=0;
   let objective='Routine objectives pinned';
-  const runStates=Object.fromEntries(seedRuns.map(run=>[run.id,'WAITING']));
+  const runStates=Object.fromEntries(activeRuns.map(run=>[run.id,'WAITING']));
   events.forEach(event=>{
     if(event.kind==='CLAIM_GRANTED') claims+=1;
     if(event.kind==='CLAIM_RELEASED') claims=Math.max(0,claims-1);
@@ -2047,7 +2141,7 @@ function noteFor(event){
 }
 function renderPerformers(state){
   performers.replaceChildren();
-  seedRuns.forEach((run,index)=>{
+  activeRuns.forEach((run,index)=>{
     const li=document.createElement('li');
     const part=document.createElement('span');
     part.className='part';
@@ -2114,7 +2208,7 @@ function render(){
   readout.advisories.textContent=String(state.advisories).padStart(2,'0');
   readout.objective.textContent=state.objective;
   cueState.textContent=`${mode} · ${cursor}/${all.length}`;
-  progress.style.width=`${(cursor/all.length)*100}%`;
+  progress.style.width=`${all.length?(cursor/all.length)*100:0}%`;
   renderPerformers(state);
   const selected=played.find(event=>event.sequence===selectedSequence);
   const eligible=[...played].reverse().find(event=>!currentFilter||event.kind.includes(currentFilter));
@@ -2133,12 +2227,12 @@ function pause(nextMode='PAUSED'){
   render();
 }
 function step(){
-  if(cursor<seedEvents.length) cursor+=1;
+  if(cursor<activeEvents.length) cursor+=1;
   selectedSequence=cursor;
   render();
 }
 function play(nextMode='CONDUCTING'){
-  if(cursor>=seedEvents.length) cursor=0;
+  if(cursor>=activeEvents.length) cursor=0;
   if(timer) window.clearInterval(timer);
   mode=nextMode;
   render();
@@ -2158,7 +2252,7 @@ document.querySelector('#reset').addEventListener('click',()=>{
 });
 document.querySelector('#recover').addEventListener('click',()=>{
   pause('RECOVERY ARMED');
-  const index=seedEvents.findIndex(event=>event.kind==='RUN_INTERRUPTED');
+  const index=activeEvents.findIndex(event=>event.kind==='RUN_INTERRUPTED');
   cursor=Math.max(0,index);
   selectedSequence=cursor;
   play('RECOVERY REPLAY');
@@ -2168,6 +2262,99 @@ scenario.addEventListener('change',()=>{
   cursor=0;
   selectedSequence=0;
   render();
+});
+function familyFor(kind){
+  if(kind.includes('CLAIM')) return 'claim';
+  if(kind.includes('ADVISORY')||kind.includes('OBJECTIVE')) return 'direction';
+  if(kind.includes('LESSON')||kind.includes('EPISODE')) return 'memory';
+  if(kind.includes('CHECKPOINT')||kind.includes('TOOL')) return 'execution';
+  return 'run';
+}
+function useFixture(){
+  pause('RECORDED OFFICE / SOURCE REPLAY');
+  activeEvents=seedEvents;
+  activeRuns=seedRuns;
+  cursor=activeEvents.length;
+  selectedSequence=cursor;
+  serviceState.dataset.state='fixture';
+  serviceState.textContent='Fixture mode · immutable Python-generated evidence embedded in this page.';
+  transcriptSection.hidden=false;
+  serviceConnect.textContent='Load source';
+  render();
+}
+async function useLiveService(){
+  pause('CONNECTING TO INSTALLED SERVICE');
+  const endpoint=serviceEndpoint.value.trim().replace(/\\/$/,'');
+  if(!endpoint) throw new Error('Enter a service origin.');
+  const headers={Accept:'application/json'};
+  if(serviceToken.value) headers.Authorization=`Bearer ${serviceToken.value}`;
+  serviceState.dataset.state='fixture';
+  serviceState.textContent='Connecting to the installed BATON control plane…';
+  const [eventsResponse,runsResponse]=await Promise.all([
+    fetch(`${endpoint}/api/v1/events?limit=500`,{headers}),
+    fetch(`${endpoint}/api/v1/runs`,{headers})
+  ]);
+  if(!eventsResponse.ok||!runsResponse.ok){
+    throw new Error(`Service returned ${eventsResponse.status}/${runsResponse.status}.`);
+  }
+  const eventsBody=await eventsResponse.json();
+  const runsBody=await runsResponse.json();
+  const events=eventsBody.data;
+  const runs=runsBody.data;
+  if(!Array.isArray(events)||!Array.isArray(runs)){
+    throw new Error('Service response did not match BATON API v1.');
+  }
+  activeEvents=events.map((event,index)=>({
+    sequence:index+1,
+    sourceSequence:event.sequence,
+    time:event.logical_time||'',
+    kind:event.kind,
+    run:event.run_id||'fleet',
+    actor:event.actor||'baton-runtime',
+    payload:event.payload||{},
+    family:familyFor(event.kind)
+  }));
+  activeRuns=runs.map(run=>({
+    id:run.id,
+    agent:run.agent,
+    usedTokens:run.used_tokens,
+    maxTokens:run.max_tokens
+  }));
+  cursor=activeEvents.length;
+  selectedSequence=cursor;
+  mode='INSTALLED SERVICE / DURABLE SQLITE';
+  serviceState.dataset.state='live';
+  serviceState.textContent=`Live service connected · ${activeRuns.length} runs · ${activeEvents.length} events. Refresh to read new durable state.`;
+  transcriptSection.hidden=true;
+  serviceConnect.textContent='Refresh live';
+  render();
+}
+sourceMode.addEventListener('change',()=>{
+  if(sourceMode.value==='fixture') useFixture();
+  else {
+    serviceConnect.textContent='Connect live';
+    serviceState.dataset.state='fixture';
+    serviceState.textContent='Live mode reads the real local API. Run BATON with --static-dir docs for a secure same-origin connection.';
+  }
+});
+serviceConnect.addEventListener('click',async()=>{
+  if(sourceMode.value==='fixture'){
+    useFixture();
+    return;
+  }
+  try {
+    await useLiveService();
+  } catch(error) {
+    serviceState.dataset.state='error';
+    serviceState.textContent=`Connection failed · ${error.message} The embedded fixture remains available.`;
+    activeEvents=seedEvents;
+    activeRuns=seedRuns;
+    cursor=activeEvents.length;
+    selectedSequence=cursor;
+    transcriptSection.hidden=false;
+    mode='REPLAY FALLBACK / SOURCE FIXTURE';
+    render();
+  }
 });
 filters.forEach(button=>button.addEventListener('click',()=>{
   filters.forEach(item=>{
@@ -2244,8 +2431,23 @@ aria-pressed="false">Memory</button></div></div>
 </div><div class="transport-status" role="status"><span>Conductor state</span>
 <strong id="cueState">REPLAY COMPLETE</strong><div class="progress">
 <i id="progress"></i></div></div></div>
+<div class="service-bridge" aria-label="Evidence source">
+<div class="service-field"><label for="sourceMode">Evidence source</label>
+<select id="sourceMode"><option value="fixture">Embedded source fixture</option>
+<option value="live">Installed live service</option></select></div>
+<div class="service-field"><label for="serviceEndpoint">BATON service origin</label>
+<input id="serviceEndpoint" type="url" value="" placeholder="Same origin by default"
+autocomplete="off" spellcheck="false"></div>
+<div class="service-field"><label for="serviceToken">API token · if configured</label>
+<input id="serviceToken" type="password" value="" placeholder="Kept in memory only"
+autocomplete="off" spellcheck="false"></div>
+<button class="service-connect" id="serviceConnect" type="button">Load source</button>
+<p class="service-state" id="serviceState" data-state="fixture" role="status"
+aria-live="polite">Fixture mode ·
+immutable Python-generated evidence embedded in this page.</p></div>
 <div class="runtime-readout" aria-label="Live organization state">
-<p class="projection-note">The source scenario replays repository evidence.
+<p class="projection-note">Fixture mode replays repository evidence; installed
+live-service mode reads durable API events generated by the actual runtime.
 Alternate organizations are deterministic client-side projections of the same
 event semantics; they do not claim additional measured runs.</p>
 <div class="runtime-cell"><span>Current cue</span>

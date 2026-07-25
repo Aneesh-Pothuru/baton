@@ -10,6 +10,7 @@ coordinated agent routines, recoverable handoffs, and eval-gated memory.">
 <header class="site-nav"><a class="brand" href="./">BATON
 <span>organization runtime</span></a><nav aria-label="Main navigation">
 <a href="#thesis">Thesis</a><a href="#evidence">Evidence</a>
+<a href="#installed">Installed product</a>
 <a href="#about">About</a>
 <a href="architecture/">Architecture</a>
 <a href="https://github.com/Aneesh-Pothuru/baton">GitHub</a>
@@ -101,11 +102,32 @@ connection, reopens it, restores step 2, then continues. The
 <h3>Promotion is an evaluated event.</h3><p>Candidate scores beat their
 registered baselines before the fixture lesson is marked promoted. See the
 <a href="demo/">complete event transcript</a>.</p></article></div></div></section>
+<section class="section" id="installed"><div class="section-heading"><div>
+<p class="section-index">IV / Installed control plane</p>
+<h2>The runtime is not trapped in the demo.</h2></div>
+<p>Install BATON to expose the same durable engine through a local HTTP
+service. Caller-owned loops register routines, coordinate work, persist tool
+boundaries, and resume after restart; the score can read those real events.</p>
+</div><div class="problem-grid"><article class="problem"><b>01</b>
+<h3>Register &amp; fire.</h3><p>Versioned routine specs become durable runs
+with pinned constraints, budgets, subscriptions, and declared work claims.</p>
+</article><article class="problem"><b>02</b><h3>Coordinate live.</h3>
+<p>Claims, scoped advisories, objective changes, and usage signals use explicit
+API transitions with structured errors and an append-only event trail.</p>
+</article><article class="problem"><b>03</b><h3>Restart &amp; prove.</h3>
+<p>SQLite retains checkpoints and handoffs. Resume restores the last durable
+edge, while the evidence endpoint returns its exact versions and events.</p>
+</article></div><div class="actions">
+<a class="button primary" href="demo/">Open fixture / live score</a>
+<a class="button ghost"
+href="https://github.com/Aneesh-Pothuru/baton/blob/main/docs/API.md">
+Read the HTTP contract</a></div></section>
 <section class="architecture"><div class="section-heading"><div>
-<p class="section-index">IV / Architecture</p>
+<p class="section-index">V / Architecture</p>
 <h2>One compact, durable spine.</h2></div><p>The MVP stays deliberately small:
-standard-library Python and SQLite, no model SDK, no server needed for the
-published evidence. The runtime is the product; the score is its projection.</p>
+standard-library Python and SQLite, no model SDK, and no server needed for the
+published fixture. The optional local service exposes the actual runtime; the
+score remains its projection.</p>
 </div><div class="architecture-flow" aria-label="BATON architecture flow">
 <article class="architecture-node"><span>01 / INPUT</span><h3>Routine spec</h3>
 <p>Objective, schedule, budgets, claims, subscriptions, and workspace ref.</p>
@@ -117,11 +139,12 @@ together.</p></article><article class="architecture-node"><span>04 / RECORD</spa
 <h3>Event ledger</h3><p>Every organizational transition enters one ordered
 SQLite record.</p></article><article class="architecture-node">
 <span>05 / PROJECTION</span><h3>Conductor score</h3>
-<p>Static Pages turns that record into an interactive replay.</p></article>
+<p>Static Pages replays the fixture; the installed service can feed it current
+durable events.</p></article>
 </div><div class="actions"><a class="button ghost" href="architecture/">
 Read the architecture and limits</a></div></section>
 <section class="boundary" id="about"><div>
-<p class="section-index">V / About &amp; honest boundary</p>
+<p class="section-index">VI / About &amp; honest boundary</p>
 <h2>Small enough to inspect.</h2></div><ul class="boundary-list">
 <li><strong>It is</strong><span>A single-node runtime harness for deterministic,
 durable agent routines.</span></li><li><strong>It is not</strong>

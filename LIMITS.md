@@ -7,6 +7,12 @@ This repository is a compact, honest single-node MVP.
 - A deterministic three-agent office replay and static fleet timeline.
 - SQLite append-only events, tool-boundary checkpoints, and restoration after
   closing and reopening the database connection.
+- A local HTTP control plane over the actual runtime: routine registration and
+  firing, durable run/evidence reads, claim leases, advisories, objective
+  updates, usage enforcement, checkpoints/resume, health/readiness, restart
+  persistence, loopback defaults, and token enforcement for non-loopback binds.
+- An optional same-origin static host lets the score switch between its
+  immutable replay and current events from the installed service.
 - Versioned pinned handoffs, externally fired routine specs, objective updates,
   budget re-scope/stop signals, queued TTL claims with owner-token release,
   scoped advisories and retraction, episodes, and deterministic lesson gates.
@@ -26,15 +32,16 @@ This repository is a compact, honest single-node MVP.
 - Constraint survival across real model context compaction, derived-constraint
   survival, quarantine rate, coordination overhead, and live advisory latency
   are not measured.
-- No model loop, LiteLLM client, Ollama/Gemini live office, Docker sandbox,
+- No model loop, LiteLLM client, Ollama/Gemini live office, tool sandbox,
   Postgres backend, A2A endpoint, multi-tenant mode, or cross-org federation is
-  included.
+  included. The Docker image packages and isolates the control plane; it is not
+  an agent tool-execution sandbox.
 - Git workspace durability is represented by a recorded immutable workspace
   reference. BATON does not commit, restore, or merge a real working tree.
 - Objective authorization is an explicit issuer string in this local runtime;
-  production identity, authentication, and supervisor permissions are absent.
+  a service token authenticates API access but production identity, per-actor
+  authorization, and supervisor permissions are absent.
 - Claims serialize BATON dispatches only. External programs can ignore them.
 
 The deterministic fixture is useful implementation evidence, not a published
 reliability or compounding benchmark.
-

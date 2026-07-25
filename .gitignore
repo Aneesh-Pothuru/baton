@@ -4,9 +4,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.env
 build/
 dist/
 *.egg-info/
 reports/*.sqlite
 reports/*.json
-
+state/
